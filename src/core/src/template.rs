@@ -1,22 +1,72 @@
+mod raw;
+mod date_time;
+
 use std::path::PathBuf;
+use std::collections::HashMap;
+use crate::template::raw::Raw;
+use crate::template::date_time::DateTime;
+use serde::{Serialize, Deserialize};
 
 // The configuration of how a template is been stored and processed.
+#[derive(Deserialize, Serialize)]
 pub struct Profile {
-    label: String,
+    pub label: String,
     path: PathBuf,
-    raw: Template,
+    matches: Vec<Template>,
 }
 
-impl Profile {}
+impl Profile {
+    pub fn new(label: &str, path: PathBuf, matches: Vec<Template>) -> Self {
+        Profile {
+            label: label.to_string(), path, matches
+        }
+    }
 
-// Text template for generating the substitude content.
-struct Template {
-    raw: String,
-    replace: Option<HashMap<String, String>>,
+    pub fn add_match(mut self, template: Template) -> Self {
+        self.matches.push(template);
+        self
+    }
+
+    pub fn apply(&self, input: &str) -> String {
+        let mut formatted = input.to_string();
+        for t in &self.matches {
+            formatted = t.format(formatted);
+        }
+        formatted
+    }
+}
+
+// Text template.
+#[derive(Deserialize, Serialize)]
+#[serde(tag = "type")]
+pub enum Template {
+    Raw(Raw),
+    DateTime(DateTime),
 }
 
 impl Template {
-    fn new(raw: String) -> Self {
-        Self { raw, replace: None }
+    pub fn raw(raw: &str, replace: &str) -> Self {
+        Template::Raw(Raw {
+            raw: raw.to_string(), replace: replace.to_string()
+        })
     }
+    pub fn date_time(raw: &str, format: &str) -> Self {
+        Template::DateTime(DateTime {
+            raw: raw.to_string(),
+            format: format.to_string(),
+        })
+    }
+}
+
+impl Format for Template {
+    fn format(&self, input: String) -> String {
+        match self {
+            Template::Raw(t) => t.format(input),
+            Template::DateTime(t) => t.format(input),
+        }
+    }
+}
+
+trait Format {
+    fn format(&self, input: String) -> String;
 }
