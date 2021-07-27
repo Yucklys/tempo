@@ -4,22 +4,49 @@ use crate::template::Profile;
 use std::collections::HashMap;
 use std::fs;
 use std::io;
+use crate::Opts;
 
-#[derive(Deserialize, Serialize)]
+#[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct Config {
     pub profile_dir: PathBuf,
 }
 
+#[derive(Debug, Clone)]
+pub enum LoadError {
+    FileError,
+    FormatError,
+}
+
 impl Default for Config {
     fn default() -> Self {
-        let profile_dir = dirs::data_dir().unwrap().join("tempo");
         Self {
-            profile_dir,
+            profile_dir: Config::path().join("user"),
         }
     }
 }
 
 impl Config {
+    fn path() -> PathBuf {
+        dirs::data_dir().unwrap().join("tempo")
+    }
+
+    pub async fn load() -> Result<Config, LoadError> {
+        use async_std::prelude::*;
+
+        let mut contents = String::new();
+        let mut file = async_std::fs::File::open(Self::path().join("config.toml")).await.map_err(|_| LoadError::FileError)?;
+
+        file.read_to_string(&mut contents)
+            .await
+            .map_err(|_| LoadError::FileError)?;
+
+        toml::from_str(&contents).map_err(|_| LoadError::FormatError)
+    }
+
+    pub async fn load_extend(opts: Opts) -> Result<(Config, Opts), LoadError> {
+        Config::load().await.map(|c| (c, opts))
+    }
+
     pub fn get_profiles(&self) -> io::Result<HashMap<String, Profile>> {
         self.get_profiles_helper(self.profile_dir.clone())
     }

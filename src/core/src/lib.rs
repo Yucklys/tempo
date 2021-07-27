@@ -2,21 +2,23 @@ mod config;
 mod template;
 
 use clap::{AppSettings, Clap};
-use crate::config::Config;
+pub use crate::config::*;
 
-#[derive(Clap)]
+#[derive(Clap, Debug, Clone)]
 #[clap(version = "0.1", author = "Yucklys <yucklys687@outlook.com>")]
 #[clap(setting = AppSettings::ColoredHelp)]
 pub struct Opts {
-    input: String,
+    pub input: String,
     #[clap(long, short, default_value = " ")]
-    prefer: String,
+    pub prefer: String,
+    #[clap(long, short)]
+    gui: bool
 }
 
-pub fn run_cli() {
+pub async fn run_cli() -> Option<Opts> {
     let opts: Opts = Opts::parse();
     let input = opts.input.as_str();
-    let config = Config::default();
+    let config = Config::load().await.unwrap_or(Config::default());
     let profiles = config.get_profiles().unwrap();
     let mut output = String::new();
     if opts.prefer != " ".to_string() {
@@ -29,7 +31,12 @@ pub fn run_cli() {
         output = profiles.values().fold(input.to_string(), |s, p| p.apply(&s));
     }
 
-    println!("{}", output);
+    if opts.gui {
+        Some(opts)
+    } else {
+        println!("{}", output);
+        None
+    }
 }
 
 #[cfg(test)]
