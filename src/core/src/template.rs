@@ -6,13 +6,20 @@ use std::collections::HashMap;
 use crate::template::raw::Raw;
 use crate::template::date_time::DateTime;
 use serde::{Serialize, Deserialize};
+use std::fmt::Formatter;
 
 // The configuration of how a template is been stored and processed.
-#[derive(Deserialize, Serialize)]
+#[derive(Deserialize, Serialize, Default, Clone, Debug, Eq, PartialEq)]
 pub struct Profile {
     pub label: String,
     path: PathBuf,
     matches: Vec<Template>,
+}
+
+impl std::fmt::Display for Profile {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.label)
+    }
 }
 
 impl Profile {
@@ -37,7 +44,7 @@ impl Profile {
 }
 
 // Text template.
-#[derive(Deserialize, Serialize)]
+#[derive(Deserialize, Serialize, Clone, Debug, Eq, PartialEq)]
 #[serde(tag = "type")]
 pub enum Template {
     Raw(Raw),
@@ -69,4 +76,10 @@ impl Format for Template {
 
 trait Format {
     fn format(&self, input: String) -> String;
+}
+
+#[derive(Debug, Clone)]
+pub enum TemplateError {
+    FormatError,
+    MatchError
 }

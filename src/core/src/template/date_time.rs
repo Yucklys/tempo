@@ -2,7 +2,7 @@ use crate::template::Format;
 use chrono::Local;
 use serde::{Serialize, Deserialize};
 
-#[derive(Deserialize, Serialize)]
+#[derive(Deserialize, Serialize, Debug, Clone, Default, Eq, PartialEq)]
 pub struct DateTime {
     pub raw: String,
     pub format: String,

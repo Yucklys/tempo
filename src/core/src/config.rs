@@ -30,6 +30,7 @@ impl Config {
         dirs::data_dir().unwrap().join("tempo")
     }
 
+    /// Load configuration.
     pub async fn load() -> Result<Config, LoadError> {
         use async_std::prelude::*;
 
@@ -43,6 +44,7 @@ impl Config {
         toml::from_str(&contents).map_err(|_| LoadError::FormatError)
     }
 
+    /// Load configuration with terminal input.
     pub async fn load_extend(opts: Opts) -> Result<(Config, Opts), LoadError> {
         Config::load().await.map(|c| (c, opts))
     }

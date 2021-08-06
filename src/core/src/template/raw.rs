@@ -1,7 +1,7 @@
 use crate::template::Format;
 use serde::{Serialize, Deserialize};
 
-#[derive(Deserialize, Serialize)]
+#[derive(Deserialize, Serialize, Debug, Clone, Default, Eq, PartialEq)]
 pub struct Raw {
     pub raw: String,
     pub replace: String
