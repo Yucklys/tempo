@@ -1,6 +1,12 @@
-use iced::{Application, Command, Clipboard, Element, Settings, Container, Text, HorizontalAlignment, Length, TextInput, text_input, Column, Row, pick_list, PickList};
-use tempo_core::{Config, LoadError, Opts, Profile, apply_format};
+mod recipe_tree;
+
+use crate::gui::recipe_tree::RecipeTree;
+use iced::{
+    button, pick_list, text_input, Application, Button, Clipboard, Column, Command, Container,
+    Element, HorizontalAlignment, Length, PickList, Row, Settings, Text, TextInput,
+};
 use std::collections::HashMap;
+use tempo_core::{apply_format, Config, LoadError, Opts, Profile};
 
 pub fn run_gui(flags: Opts) -> iced::Result {
     App::run(Settings {
@@ -12,7 +18,7 @@ pub fn run_gui(flags: Opts) -> iced::Result {
 #[derive(Debug)]
 enum App {
     Loading,
-    Loaded(State)
+    Loaded(State),
 }
 
 #[derive(Debug, Default)]
@@ -22,15 +28,19 @@ struct State {
     profiles: Vec<Profile>,
     output: String,
     input: text_input::State,
-    input_value: String
+    input_value: String,
+    saved_inputs: Vec<(String, button::State)>,
+    recipe_tree: RecipeTree,
 }
 
 #[derive(Debug, Clone)]
-enum Message {
+pub enum Message {
     Loaded(Result<(Config, Opts), LoadError>),
     InputChanged(String),
     InputSubmitted,
-    ProfileSelected(Profile)
+    GenerateOutput(String),
+    ProfileSelected(Profile),
+    TemplateToggle(usize, bool),
 }
 
 impl Application for App {
@@ -39,25 +49,38 @@ impl Application for App {
     type Flags = Opts;
 
     fn new(flags: Opts) -> (App, Command<Message>) {
-        (App::Loading, Command::perform(Config::load_extend(flags), Message::Loaded))
+        (
+            App::Loading,
+            Command::perform(Config::load_extend(flags), Message::Loaded),
+        )
     }
 
     fn title(&self) -> String {
         String::from("Tempo")
     }
 
-    fn update(&mut self, message: Self::Message, _clipboard: &mut Clipboard) -> Command<Self::Message> {
+    fn update(
+        &mut self,
+        message: Self::Message,
+        _clipboard: &mut Clipboard,
+    ) -> Command<Self::Message> {
         match self {
             App::Loading => {
                 match message {
                     Message::Loaded(Ok((config, opts))) => {
                         let profiles = config.get_profiles().unwrap_or(HashMap::new());
                         let default_profile = profiles.keys().nth(0).unwrap();
-                        let preferred_profile = profiles.get(&opts.prefer.unwrap_or(default_profile.clone())).map(|p| p.clone());
+                        let preferred_profile = profiles
+                            .get(&opts.prefer.unwrap_or(default_profile.clone()))
+                            .map(|p| p.clone());
                         *self = App::Loaded(State {
-                            profiles: profiles.values().map(|p| p.clone()).collect::<Vec<Profile>>(),
+                            profiles: profiles
+                                .values()
+                                .map(|p| p.clone())
+                                .collect::<Vec<Profile>>(),
                             preferred_profile,
                             input_value: opts.input.unwrap_or(String::new()),
+                            recipe_tree: RecipeTree::new(),
                             ..State::default()
                         });
                     }
@@ -69,24 +92,37 @@ impl Application for App {
 
                 Command::none()
             }
-           App::Loaded(state) => {
-               match message {
-                   Message::InputChanged(value) => {
-                       state.input_value = value;
-                   }
-                   Message::InputSubmitted => {
-                       let output = apply_format(&state.input_value, &state.preferred_profile);
-                       match output {
-                           Ok(v) => state.output = v,
-                           Err(_) => state.output = format!("Format failed! {:?}", state.profiles)
-                       }
-                   }
-                   Message::ProfileSelected(profile) => state.preferred_profile = Some(profile),
-                   _ => {}
-               }
+            App::Loaded(state) => {
+                match message {
+                    Message::InputChanged(value) => {
+                        state.input_value = value;
+                    }
+                    Message::InputSubmitted => {
+                        state
+                            .saved_inputs
+                            .push((state.input_value.clone(), button::State::new()));
+                        state.input_value = String::new();
+                    }
+                    Message::GenerateOutput(input) => {
+                        let output = apply_format(&input, &state.preferred_profile);
+                        match output {
+                            Ok(v) => state.output = v,
+                            Err(_) => state.output = format!("Format failed! {:?}", state.profiles),
+                        }
+                    }
+                    Message::ProfileSelected(profile) => state.preferred_profile = Some(profile),
+                    Message::TemplateToggle(i, is_enabled) => {
+                        let templates = match &mut state.preferred_profile {
+                            Some(p) => p.get_templates_mut(),
+                            None => panic!("No preferred profile"),
+                        };
+                        templates.get_mut(i).unwrap().set_enabled(is_enabled)
+                    }
+                    _ => {}
+                }
 
-               Command::none()
-           }
+                Command::none()
+            }
         }
     }
 
@@ -96,29 +132,60 @@ impl Application for App {
             App::Loaded(State {
                 input,
                 input_value,
+                saved_inputs,
                 output,
                 profile_list,
                 profiles,
                 preferred_profile,
+                recipe_tree,
                 ..
-                        }) => {
-                let input = TextInput::new(
-                    input,
-                    "Input",
-                    input_value,
-                    Message::InputChanged
-                ).padding(15).size(20).on_submit(Message::InputSubmitted);
+            }) => {
+                let recipes = {
+                    let templates = match preferred_profile {
+                        Some(p) => p.get_templates_mut(),
+                        None => panic!("No preferred profile"),
+                    };
+
+                    recipe_tree.view(templates)
+                };
+                let input_box = TextInput::new(input, "Input", input_value, Message::InputChanged)
+                    .padding(15)
+                    .size(20)
+                    .on_submit(Message::InputSubmitted);
+                let inputs = saved_inputs.iter_mut().fold(
+                    Column::new().spacing(10),
+                    |column: Column<Message>, (input, state)| {
+                        column.push(
+                            Button::new(state, Text::new(input.clone()))
+                                .on_press(Message::GenerateOutput(input.clone())),
+                        )
+                    },
+                );
                 let output = Text::new(output.to_string()).size(20);
                 let profile_picker = PickList::new(
                     profile_list,
                     profiles.to_owned(),
                     preferred_profile.clone(),
-                    Message::ProfileSelected
-                ).width(Length::Fill);
+                    Message::ProfileSelected,
+                )
+                .width(Length::Fill);
 
-                let content = Column::new().spacing(20).width(Length::FillPortion(3)).push(input).push(output);
-                let profile_view = Column::new().spacing(20).width(Length::FillPortion(7)).push(profile_picker);
-                let row = Row::new().padding(30).spacing(20).push(content).push(profile_view);
+                let content = Column::new()
+                    .spacing(20)
+                    .width(Length::FillPortion(3))
+                    .push(input_box)
+                    .push(inputs);
+                let profile_view = Column::new()
+                    .spacing(20)
+                    .width(Length::FillPortion(7))
+                    .push(profile_picker)
+                    .push(recipes)
+                    .push(output);
+                let row = Row::new()
+                    .padding(30)
+                    .spacing(20)
+                    .push(content)
+                    .push(profile_view);
 
                 row.into()
             }
@@ -132,8 +199,8 @@ fn loading_message<'a>() -> Element<'a, Message> {
             .horizontal_alignment(HorizontalAlignment::Center)
             .size(50),
     )
-        .width(Length::Fill)
-        .height(Length::Fill)
-        .center_y()
-        .into()
+    .width(Length::Fill)
+    .height(Length::Fill)
+    .center_y()
+    .into()
 }

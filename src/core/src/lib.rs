@@ -1,10 +1,10 @@
 mod config;
 mod template;
 
-use clap::{AppSettings, Clap};
 pub use crate::config::*;
-pub use template::{Profile, TemplateError};
+use clap::{AppSettings, Clap};
 use std::collections::HashMap;
+pub use template::{Profile, Template, TemplateError};
 
 #[derive(Clap, Debug, Clone)]
 #[clap(version = "0.1", author = "Yucklys <yucklys687@outlook.com>")]
@@ -14,7 +14,7 @@ pub struct Opts {
     #[clap(long, short)]
     pub prefer: Option<String>,
     #[clap(long, short)]
-    gui: bool
+    gui: bool,
 }
 
 pub async fn run_cli() -> Option<Opts> {
@@ -22,7 +22,9 @@ pub async fn run_cli() -> Option<Opts> {
     let input = opts.input.clone().unwrap_or(String::new());
     let config = Config::load().await.unwrap_or(Config::default());
     let profiles = config.get_profiles().unwrap();
-    let prefer = &profiles.get(&opts.clone().prefer.unwrap_or(String::new())).map(|p| p.clone());
+    let prefer = &profiles
+        .get(&opts.clone().prefer.unwrap_or(String::new()))
+        .map(|p| p.clone());
     let output = apply_format(input.as_str(), prefer);
 
     if opts.gui {
@@ -31,9 +33,11 @@ pub async fn run_cli() -> Option<Opts> {
         match output {
             Ok(value) => println!("{}", value),
             Err(e) => match e {
-                TemplateError::MatchError => println!("Cannot find preferred profile, maybe the name is not correct?"),
-                TemplateError::FormatError => println!("Cannot format the input correctly.")
-            }
+                TemplateError::MatchError => {
+                    println!("Cannot find preferred profile, maybe the name is not correct?")
+                }
+                TemplateError::FormatError => println!("Cannot format the input correctly."),
+            },
         }
         None
     }
@@ -54,7 +58,8 @@ mod tests {
 
     #[test]
     fn raw_template() {
-        let mut profile = test_profile().add_match(Template::raw("h", "hello"))
+        let mut profile = test_profile()
+            .add_match(Template::raw("h", "hello"))
             .add_match(Template::raw("tem", "tempo"))
             .add_match(Template::date_time(":now", "%Y-%m-%d %H:%M:%S"));
         println!("{}", profile.apply("now is :now"));
